@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Child Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        /* --- CSS VARIABLES FOR THEMING --- */
+        :root {
+            --bg-color: #F5F5F5;
+            --card-bg: #FFFFFF;
+            --text-color: #1A1A2E;
+            --text-secondary: #888;
+            --border-color: #E1E8ED;
+            --toggle-bg: #E0E0E0;
+            --accent-color: #00D9A3;
+            
+            /* Radio Styles Light Mode */
+            --radio-focus-bg: #E3F2FD;
+            --radio-focus-border: #1565C0;
+            --radio-focus-text: #1565C0;
+            
+            --radio-calm-bg: #FCE4EC;
+            --radio-calm-border: #C2185B;
+            --radio-calm-text: #C2185B;
+        }
+
+        /* Dark Mode Overrides */
+        body.dark-mode {
+            --bg-color: #121212;
+            --card-bg: #1E1E2E;
+            --text-color: #E0E0E0;
+            --text-secondary: #A0A0A0;
+            --border-color: #2C2C3E;
+            --toggle-bg: #333;
+            
+             /* Radio Styles Dark Mode */
+            --radio-focus-bg: rgba(21, 101, 192, 0.15);
+            --radio-focus-border: #42A5F5;
+            --radio-focus-text: #42A5F5;
+            
+            --radio-calm-bg: rgba(194, 24, 91, 0.15);
+            --radio-calm-border: #EC407A;
+            --radio-calm-text: #EC407A;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+            min-height: 100vh;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            border-radius: 30px;
+            padding: 30px 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: background 0.3s;
+        }
+
+        /* Header & Dark Mode Toggle */
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+        }
+        .header { text-align: left; }
+        .header h1 { font-size: 26px; font-weight: 700; margin-bottom: 5px; }
+        .header p { font-size: 14px; color: var(--text-secondary); }
+
+        .theme-toggle-btn {
+            background: none; border: none; cursor: pointer; font-size: 24px;
+            color: var(--text-color); transition: transform 0.3s;
+            padding: 5px;
+        }
+        .theme-toggle-btn:active { transform: rotate(15deg) scale(0.9); }
+
+        /* Status Card */
+        .status-card {
+            background: linear-gradient(135deg, #00D9A3 0%, #00B386 100%);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 20px rgba(0, 217, 163, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .status-card.stressed {
+            background: linear-gradient(135deg, #FF6B6B 0%, #EE5A52 100%);
+            box-shadow: 0 8px 20px rgba(255, 107, 107, 0.4);
+        }
+
+        .status-label { font-size: 14px; color: rgba(255, 255, 255, 0.9); font-weight: 500; margin-bottom: 5px; }
+        .status-text { font-size: 42px; color: #FFFFFF; font-weight: 700; text-transform: capitalize; }
+
+        /* Auto Toggle Row */
+        .auto-row {
+            background: var(--bg-color);
+            border-radius: 15px;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            border: 1px solid var(--border-color);
+            transition: background 0.3s, border-color 0.3s;
+        }
+
+        .auto-info h3 { font-size: 16px; font-weight: 600; }
+        .auto-info p { font-size: 12px; color: var(--text-secondary); }
+        .auto-info p.active { color: var(--accent-color); font-weight: 600; }
+
+        /* Standard Toggle Switch */
+        .toggle-switch {
+            position: relative; width: 50px; height: 28px;
+            background: var(--toggle-bg); border-radius: 20px; cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .toggle-switch.active { background: var(--accent-color); }
+        .toggle-slider {
+            position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+            background: white; border-radius: 50%; transition: transform 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        .toggle-switch.active .toggle-slider { transform: translateX(22px); }
+
+        /* --- NEW RADIO STYLE SESSION BUTTONS --- */
+        .session-radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .session-radio-input { display: none; }
+
+        .session-radio-label {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+            border-radius: 18px;
+            border: 2px solid var(--border-color);
+            background: var(--card-bg);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .radio-circle {
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            border: 2px solid var(--text-secondary);
+            margin-right: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .radio-circle::after {
+            content: '';
+            height: 12px;
+            width: 12px;
+            background: transparent;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+
+        .session-content { flex-grow: 1; }
+        .btn-title { font-size: 18px; font-weight: 700; display: block; margin-bottom: 5px; }
+        .btn-desc { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+        
+        /* Removed .btn-icon styles and HTML elements */
+
+        .session-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 10px;
+            margin-left: 10px;
+            text-transform: uppercase;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        /* --- CHECKED STATES --- */
+        /* Focus Checked */
+        #focus-radio:checked + .session-radio-label {
+            background: var(--radio-focus-bg);
+            border-color: var(--radio-focus-border);
+        }
+        #focus-radio:checked + .session-radio-label .radio-circle {
+            border-color: var(--radio-focus-border);
+        }
+        #focus-radio:checked + .session-radio-label .radio-circle::after {
+            background: var(--radio-focus-text);
+        }
+        #focus-radio:checked + .session-radio-label .btn-title {
+             color: var(--radio-focus-text);
+        }
+        #focus-radio:checked + .session-radio-label .session-badge {
+             background: var(--radio-focus-border); color: white;
+        }
+
+        /* Calm Checked */
+        #calm-radio:checked + .session-radio-label {
+            background: var(--radio-calm-bg);
+            border-color: var(--radio-calm-border);
+        }
+        #calm-radio:checked + .session-radio-label .radio-circle {
+             border-color: var(--radio-calm-border);
+        }
+        #calm-radio:checked + .session-radio-label .radio-circle::after {
+             background: var(--radio-calm-text);
+        }
+        #calm-radio:checked + .session-radio-label .btn-title {
+             color: var(--radio-calm-text);
+        }
+        #calm-radio:checked + .session-radio-label .session-badge {
+             background: var(--radio-calm-border); color: white;
+        }
+
+        /* Music Manual Control */
+        .music-control {
+            background: var(--bg-color);
+            border-radius: 15px;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid var(--border-color);
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .icon-music {
+            width: 40px; height: 40px; border-radius: 50%; background: #8E44AD;
+            color: white; display: flex; align-items: center; justify-content: center; margin-right: 15px;
+        }
+
+        .sensor-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #2E7DF7 0%, #1E5FD9 100%);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            padding: 18px;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 30px;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(46, 125, 247, 0.3);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header-container">
+            <div class="header">
+                <h1>Child Monitor</h1>
+                <p>Smart Room Control</p>
+            </div>
+            <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()">
+                🌓
+            </button>
+        </div>
+
+
+        <div class="status-card" id="status-card">
+            <div class="status-label">Current State</div>
+            <div class="status-text" id="status-text">Relaxed</div>
+        </div>
+
+        <div class="auto-row">
+            <div class="auto-info">
+                <h3>Automatic Mode</h3>
+                <p id="auto-status">Inactive</p>
+            </div>
+            <div class="toggle-switch" id="auto-toggle" onclick="toggleControl('auto')">
+                <div class="toggle-slider"></div>
+            </div>
+        </div>
+
+        <div class="session-radio-group">
+            
+            <input type="radio" id="focus-radio" name="session-group" class="session-radio-input" value="focus" onchange="triggerSession(this.value)">
+            <label for="focus-radio" class="session-radio-label">
+                <div class="radio-circle"></div>
+                <div class="session-content">
+                    <span class="btn-title">Focus Session <span class="session-badge">Brain Power</span></span>
+                    <span class="btn-desc">Yellow Light Only</span>
+                </div>
+            </label>
+
+            <input type="radio" id="calm-radio" name="session-group" class="session-radio-input" value="calm" onchange="triggerSession(this.value)">
+            <label for="calm-radio" class="session-radio-label">
+                <div class="radio-circle"></div>
+                <div class="session-content">
+                    <span class="btn-title">Calm Session <span class="session-badge">Relax</span></span>
+                    <span class="btn-desc">Orange Light Only</span>
+                </div>
+            </label>
+        </div>
+
+        <div class="music-control">
+            <div style="display: flex; align-items: center;">
+                <div class="icon-music">▶️</div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 600;">Music</h3>
+                    <p style="font-size: 12px; color: var(--text-secondary);" id="music-status">Paused</p>
+                </div>
+            </div>
+            <div class="toggle-switch" id="music-toggle" onclick="toggleControl('music')">
+                <div class="toggle-slider"></div>
+            </div>
+        </div>
+
+        <button class="sensor-btn" onclick="window.location.href='/sensors'">
+            View Sensor Data
+        </button>
+    </div>
+
+    <script>
+        var socket = io();
+
+        var controls = {
+            orange: false,
+            yellow: false,
+            music: false,
+            auto: false
+        };
+
+        // --- THEME HANDLING ---
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('darkMode', isDark);
+        }
+
+        // Load saved theme on start
+        const savedTheme = localStorage.getItem('darkMode');
+        if (savedTheme === 'true') {
+            document.body.classList.add('dark-mode');
+        }
+
+        // Initialize state
+        fetch('/get_state').then(res => res.json()).then(data => {
+            controls = data;
+            updateAllUI();
+        });
+
+        function toggleControl(type) {
+            controls[type] = !controls[type];
+            if (type === 'music') controls['auto'] = false;
+            updateAllUI();
+            fetch('/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ control: type, state: controls[type] })
+            });
+        }
+
+        function triggerSession(sessionType) {
+            controls.auto = false; 
+            if(sessionType === 'focus') { controls.yellow = true; controls.orange = false; }
+            if(sessionType === 'calm') { controls.yellow = false; controls.orange = true; }
+            updateAllUI();
+            fetch('/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ control: 'session_' + sessionType })
+            });
+        }
+
+        function updateAllUI() {
+            // Auto
+            const autoToggle = document.getElementById('auto-toggle');
+            const autoStatus = document.getElementById('auto-status');
+            if (controls.auto) {
+                autoToggle.classList.add('active');
+                autoStatus.textContent = 'Active (Managing Room)';
+                autoStatus.classList.add('active');
+            } else {
+                autoToggle.classList.remove('active');
+                autoStatus.textContent = 'Inactive';
+                autoStatus.classList.remove('active');
+            }
+
+            // Music
+            const musicToggle = document.getElementById('music-toggle');
+            const musicStatus = document.getElementById('music-status');
+            if (controls.music) {
+                musicToggle.classList.add('active');
+                musicStatus.textContent = 'Playing';
+                musicStatus.style.color = 'var(--accent-color)';
+            } else {
+                musicToggle.classList.remove('active');
+                musicStatus.textContent = 'Paused';
+                musicStatus.style.color = 'var(--text-secondary)';
+            }
+
+            // Radios
+            const focusRadio = document.getElementById('focus-radio');
+            const calmRadio = document.getElementById('calm-radio');
+
+            if (controls.yellow && !controls.orange) {
+                focusRadio.checked = true;
+            } 
+            else if (controls.orange && !controls.yellow) {
+                calmRadio.checked = true;
+            }
+            else {
+                focusRadio.checked = false;
+                calmRadio.checked = false;
+            }
+        }
+
+        socket.on('update_status', function (data) {
+            const statusCard = document.getElementById('status-card');
+            const statusText = document.getElementById('status-text');
+            if (data.status === 'stressed') {
+                statusCard.classList.add('stressed');
+                statusText.textContent = '⚠️ Stressed';
+            } else {
+                statusCard.classList.remove('stressed');
+                statusText.textContent = 'Relaxed';
+            }
+        });
+
+        socket.on('update_controls', function (data) {
+            controls = data;
+            updateAllUI();
+        });
+    </script>
+</body>
+</html>

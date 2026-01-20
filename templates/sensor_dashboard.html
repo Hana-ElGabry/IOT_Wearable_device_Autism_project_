@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        /* --- Shared CSS Variables for Theme Consistency --- */
+        :root {
+            --bg-color: #F5F5F5;
+            --card-bg: #FFFFFF;
+            --text-color: #1A1A2E;
+            --text-secondary: #888;
+            --border-color: #E1E8ED;
+            --sensor-card-bg: #F9F9F9;
+            --btn-bg: #F5F5F5;
+            --btn-active: #E8E8E8;
+        }
+
+        body.dark-mode {
+            --bg-color: #121212;
+            --card-bg: #1E1E2E;
+            --text-color: #E0E0E0;
+            --text-secondary: #A0A0A0;
+            --border-color: #2C2C3E;
+            --sensor-card-bg: #2C2C3E;
+            --btn-bg: #2C2C3E;
+            --btn-active: #3C3C4E;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+            min-height: 100vh;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            border-radius: 30px;
+            padding: 30px 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: background 0.3s;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+
+        .header-left { display: flex; align-items: center; }
+
+        .back-btn {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--btn-bg);
+            border: none;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 20px; color: var(--text-color);
+            margin-right: 15px; transition: all 0.2s ease;
+        }
+
+        .back-btn:active { transform: scale(0.95); background: var(--btn-active); }
+
+        .header-text h1 { font-size: 22px; font-weight: 700; margin-bottom: 3px; }
+        .header-text p { font-size: 13px; color: var(--text-secondary); }
+
+        .theme-toggle-btn {
+            background: none; border: none; cursor: pointer; font-size: 24px;
+            color: var(--text-color); transition: transform 0.3s;
+            padding: 5px;
+        }
+        .theme-toggle-btn:active { transform: rotate(15deg) scale(0.9); }
+
+        .sensor-card {
+            background: var(--sensor-card-bg);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: background 0.3s;
+        }
+
+        .sensor-header {
+            display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;
+        }
+
+        .sensor-left { display: flex; align-items: center; gap: 12px; }
+
+        .sensor-icon {
+            width: 50px; height: 50px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 24px;
+        }
+
+        .icon-gsr { background: linear-gradient(135deg, #36D1DC 0%, #5B86E5 100%); }
+        .icon-temp { background: linear-gradient(135deg, #FF9A56 0%, #FF6A00 100%); }
+        .icon-heart { background: linear-gradient(135deg, #FF6B9D 0%, #C06C84 100%); }
+
+        .sensor-title { font-size: 13px; color: var(--text-secondary); margin-bottom: 5px; }
+        .sensor-value { font-size: 36px; font-weight: 700; line-height: 1; color: var(--text-color); }
+        .sensor-unit { font-size: 14px; color: var(--text-secondary); font-weight: 500; }
+
+        /* GSR Bar Chart */
+        .gsr-chart {
+            display: flex; align-items: flex-end; gap: 4px; height: 60px; padding: 10px 0;
+        }
+
+        .gsr-bar {
+            flex: 1;
+            background: linear-gradient(180deg, #36D1DC 0%, #5B86E5 100%);
+            border-radius: 5px 5px 0 0;
+            transition: height 0.3s ease;
+        }
+
+        /* Temperature Progress Bar */
+        .temp-progress {
+            width: 100%; height: 8px; background: var(--border-color);
+            border-radius: 10px; overflow: hidden; margin-top: 15px;
+        }
+
+        .temp-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #FF9A56 0%, #FF6A00 100%);
+            border-radius: 10px; transition: width 0.5s ease;
+        }
+
+        .temp-range {
+            display: flex; justify-content: space-between; margin-top: 5px;
+            font-size: 11px; color: var(--text-secondary);
+        }
+
+        /* Heart Rate Line Chart */
+        .heart-chart {
+            width: 100%; height: 60px; margin-top: 10px; position: relative;
+        }
+        .heart-line { width: 100%; height: 100%; }
+        .timestamp { text-align: center; color: var(--text-secondary); font-size: 12px; margin-top: 20px; }
+    </style>
+</head>
+
+<body>
+    <script>
+        // Apply theme immediately to prevent flashing
+        const savedTheme = localStorage.getItem('darkMode');
+        if (savedTheme === 'true') {
+            document.body.classList.add('dark-mode');
+        }
+    </script>
+
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <button class="back-btn" onclick="window.location.href='/'">←</button>
+                <div class="header-text">
+                    <h1>Sensor Dashboard</h1>
+                    <p>Real-time health monitoring</p>
+                </div>
+            </div>
+            <button class="theme-toggle-btn" onclick="toggleTheme()">🌓</button>
+        </div>
+
+        <div class="sensor-card">
+            <div class="sensor-header">
+                <div class="sensor-left">
+                    <div class="sensor-icon icon-gsr">💧</div>
+                    <div>
+                        <div class="sensor-title">Galvanic Skin Response</div>
+                        <div class="sensor-value" id="gsr-value">5.4</div>
+                    </div>
+               </div>
+                <div class="sensor-unit">μS</div>
+            </div>
+            <div class="gsr-chart" id="gsr-chart"></div>
+        </div>
+
+        <div class="sensor-card">
+            <div class="sensor-header">
+                <div class="sensor-left">
+                    <div class="sensor-icon icon-temp">🌡️</div>
+                    <div>
+                        <div class="sensor-title">Body Temperature</div>
+                        <div class="sensor-value" id="temp-value">36.8°</div>
+                    </div>
+                </div>
+                <div class="sensor-unit">Celsius</div>
+            </div>
+            <div class="temp-progress">
+                <div class="temp-fill" id="temp-fill" style="width: 60%;"></div>
+            </div>
+            <div class="temp-range">
+                <span>35.0°</span>
+                <span>40.0°</span>
+            </div>
+        </div>
+
+        <div class="sensor-card">
+            <div class="sensor-header">
+                <div class="sensor-left">
+                    <div class="sensor-icon icon-heart">❤️</div>
+                    <div>
+                        <div class="sensor-title">Heart Rate</div>
+                        <div class="sensor-value" id="heart-value">92</div>
+                    </div>
+                </div>
+                <div class="sensor-unit">BPM</div>
+            </div>
+            <div class="heart-chart">
+                <svg class="heart-line" id="heart-svg" viewBox="0 0 300 60" preserveAspectRatio="none">
+                    <path id="heart-path" fill="none" stroke="#FF6B9D" stroke-width="2" />
+                </svg>
+            </div>
+        </div>
+
+        <div class="timestamp" id="timestamp">Last updated: --:--:--</div>
+    </div>
+
+    <script>
+        var socket = io();
+
+        // Theme Toggle Logic
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            localStorage.setItem('darkMode', isDark);
+        }
+
+        // --- Chart & Sensor Logic (No changes to logic, just pure JS) ---
+        let gsrData = [30, 45, 60, 70, 55, 80, 65, 75, 50, 70, 85, 60];
+        let heartData = [];
+        for (let i = 0; i < 50; i++) heartData.push(Math.sin(i * 0.3) * 15 + 30 + Math.random() * 5);
+
+        function initGSRChart() {
+            const chart = document.getElementById('gsr-chart');
+            chart.innerHTML = '';
+            gsrData.forEach(height => {
+                const bar = document.createElement('div');
+                bar.className = 'gsr-bar';
+                bar.style.height = height + '%';
+                chart.appendChild(bar);
+            });
+        }
+
+        function updateHeartChart() {
+            const path = document.getElementById('heart-path');
+            const width = 300; const height = 60; const points = heartData.length;
+            let pathData = `M 0 ${height - heartData[0]}`;
+            for (let i = 1; i < points; i++) {
+                const x = (i / points) * width;
+                const y = height - heartData[i];
+                pathData += ` L ${x} ${y}`;
+            }
+            path.setAttribute('d', pathData);
+        }
+
+        function updateTempProgress(temp) {
+            const minTemp = 35.0; const maxTemp = 40.0;
+            const percentage = ((temp - minTemp) / (maxTemp - minTemp)) * 100;
+            document.getElementById('temp-fill').style.width = Math.min(100, Math.max(0, percentage)) + '%';
+        }
+
+        function updateTimestamp() {
+            const now = new Date();
+            document.getElementById('timestamp').textContent = 'Last updated: ' + now.toLocaleTimeString();
+        }
+
+        socket.on('sensor_data', function (data) {
+            if (data.gsr !== undefined) {
+                document.getElementById('gsr-value').textContent = data.gsr.toFixed(1);
+                gsrData.shift(); gsrData.push(Math.min(100, data.gsr * 15));
+                initGSRChart();
+            }
+            if (data.temperature !== undefined) {
+                document.getElementById('temp-value').textContent = data.temperature.toFixed(1) + '°';
+                updateTempProgress(data.temperature);
+            }
+            if (data.heartRate !== undefined) {
+                document.getElementById('heart-value').textContent = Math.round(data.heartRate);
+                heartData.shift(); heartData.push(Math.min(60, Math.max(0, (data.heartRate - 60) * 0.8)));
+                updateHeartChart();
+            }
+            updateTimestamp();
+        });
+
+        initGSRChart();
+        updateHeartChart();
+        updateTimestamp();
+
+        socket.on('connect', function () { console.log('✅ Connected to server'); });
+    </script>
+</body>
+</html>
